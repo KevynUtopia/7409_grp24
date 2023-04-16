@@ -30,11 +30,10 @@ class Environment(Process):
         self.child_conn.send(state)
         while True:
             reset, net_worth, episode_orders = 0, 0, 0
-            action, predictions = self.child_conn.recv()
-            prediction = predictions[action]
+            action = self.child_conn.recv()
             if self.env_idx == 0:
                 self.env.render(self.visualize)
-            state, reward, done = self.env.step(action, prediction=prediction)
+            state, reward, done = self.env.step(action)
 
             if done or self.env.current_step == self.env.end_step:
                 net_worth = self.env.net_worth
@@ -75,14 +74,9 @@ def train_multiprocessing(CustomEnv, agent, train_df, train_df_nomalized, num_wo
     while episode < EPISODES:
         predictions_list = agent.Actor.actor_predict(np.reshape(state, [num_worker]+[_ for _ in state[0].shape]))
         actions_list = [np.random.choice(agent.action_space, p=i) for i in predictions_list]
-        # actions_list = [np.argmax(i) for i in predictions_list]
-        # print(len(predictions_list))
-        # print((predictions_list)[0].shape)
-        # print(len(actions_list))
-        # print(len(actions_list)[0].shape)
 
         for worker_id, parent_conn in enumerate(parent_conns):
-            parent_conn.send((actions_list[worker_id], predictions_list[worker_id]))
+            parent_conn.send(actions_list[worker_id])
             action_onehot = np.zeros(agent.action_space.shape[0])
             action_onehot[actions_list[worker_id]] = 1
             actions[worker_id].append(action_onehot)
@@ -149,7 +143,6 @@ def test_multiprocessing(CustomEnv, CustomAgent, test_df, test_df_nomalized, num
         #env = CustomEnv(test_df, initial_balance=initial_balance, lookback_window_size=agent.lookback_window_size)
         env = CustomEnv(df=test_df, df_normalized=test_df_nomalized, initial_balance=initial_balance, lookback_window_size=agent.lookback_window_size)
         work = Environment(idx, child_conn, env, training_batch_size=0, visualize=visualize)
-        work = Environment(idx, child_conn, env, training_batch_size=0, visualize)
         work.start()
         works.append(work)
         parent_conns.append(parent_conn)
@@ -164,9 +157,7 @@ def test_multiprocessing(CustomEnv, CustomAgent, test_df, test_df_nomalized, num
         actions_list = [np.random.choice(agent.action_space, p=i) for i in predictions_list]
 
         for worker_id, parent_conn in enumerate(parent_conns):
-            # parent_conn.send(actions_list[worker_id])
-            parent_conn.send((actions_list[worker_id], predictions_list[worker_id]))
-
+            parent_conn.send(actions_list[worker_id])
 
         for worker_id, parent_conn in enumerate(parent_conns):
             next_state, reward, done, reset, net_worth, episode_orders = parent_conn.recv()
